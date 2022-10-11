@@ -1,3 +1,4 @@
+use dotenv::dotenv;
 use ezoauth;
 use reqwest;
 use serde_json::{json, Value};
@@ -8,6 +9,7 @@ use std::error::Error;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+	dotenv().ok();
 	let mut addr = "127.0.0.1:".to_string();
 	let port = env::args().nth(1).unwrap_or_else(|| "21337".to_string());
 	addr.push_str(&port);
