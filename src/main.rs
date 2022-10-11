@@ -26,7 +26,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			};
 			let (rx, auth_url) = ezoauth::authenticate(config, "localhost:8696").expect("Failed to authenticate");
 			println!("Client should authenticate at {auth_url}");
-			socket.write_all(auth_url.as_bytes()).await.expect("Failed to send OAuth URL");
+			socket.write_all().await.expect("Failed to send OAuth URL");
 			let ores = rx.recv().unwrap().expect("No token");
 			let token = ores.access_token();
 			let res: Value = serde_json::from_str(&reqwest::Client::new().get("https://discord.com/api/users/@me")
