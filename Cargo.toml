@@ -1,8 +1,12 @@
 [package]
-name = "cardchemy"
+name = "card-server"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+ezoauth = "0.2.0"
+reqwest = "0.11.12"
+serde_json = "1.0.86"
+tokio = {version = "1.21.2", features = ["full"]}
