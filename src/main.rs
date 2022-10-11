@@ -2,10 +2,15 @@ use dotenv::dotenv;
 use ezoauth;
 use reqwest;
 use serde_json::{json, Value};
-use tokio::net::TcpListener;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpListener;
+use tokio::sync::Mutex;
+use tokio::task;
 use std::env;
 use std::error::Error;
+use std::sync::Arc;
+
+mod handlers;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -16,8 +21,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	let listener = TcpListener::bind(&addr).await?;
 	println!("Listening on {addr}");
 	loop {
-		let (mut socket, _) = listener.accept().await?;
+		let (socket, _) = listener.accept().await?;
 		tokio::spawn(async move {
+			let sockref = Arc::new(Mutex::new(socket));
+			// authenticate
 			let config = ezoauth::OAuthConfig {
 				auth_url: "https://discord.com/api/oauth2/authorize",
 				token_url: "https://discord.com/api/oauth2/token",
@@ -28,10 +35,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			};
 			let (rx, auth_url) = ezoauth::authenticate(config, "localhost:8696").expect("Failed to authenticate");
 			println!("Client should authenticate at {auth_url}");
-			socket.write_all(json! ({
+			let mut sock = sockref.lock().await;
+			sock.write_all(json! ({
 				"type": "oauth",
 				"oauth_url": auth_url
 			}).to_string().as_bytes()).await.expect("Failed to send OAuth URL");
+			std::mem::drop(sock); // unlock mutex
 			let ores = rx.recv().unwrap().expect("No token");
 			let token = ores.access_token();
 			let res: Value = serde_json::from_str(&reqwest::Client::new().get("https://discord.com/api/users/@me")
@@ -44,8 +53,24 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			let uid = res["id"].as_str().unwrap();
 			let tag = format!("{}#{}", res["username"].as_str().unwrap(), res["discriminator"].as_str().unwrap());
 			println!("Client with id {uid} and username {tag} has joined.");
-
-			// todo
+			// start handling requests
+			loop {
+				let mut buf = String::new();
+				let mut sock = sockref.lock().await;
+				sock.read_to_string(&mut buf).await.expect("Failed to read from socket");
+				std::mem::drop(sock);
+				let res: Value = serde_json::from_str(&buf).expect("Invalid JSON");
+				let mtyp = res["type"].as_str().unwrap().to_owned();
+				let nref = sockref.clone();
+				if handlers::HANDLERS.contains_key(&mtyp) {
+					task::spawn(async {
+						let mtyp = mtyp;
+						handlers::HANDLERS.get(&mtyp).unwrap()(nref)
+					});
+				} else {
+					println!("No handler for message type {mtyp}");
+				}
+			}
 		});
 	}
 }
