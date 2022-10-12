@@ -53,6 +53,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			let uid = res["id"].as_str().unwrap();
 			let tag = format!("{}#{}", res["username"].as_str().unwrap(), res["discriminator"].as_str().unwrap());
 			println!("Client with id {uid} and username {tag} has joined.");
+			let mut sock = sockref.lock().await;
+			sock.write_all(json! ({
+				"type": "connack"
+			}).to_string().as_bytes()).await.expect("Failed to acknowledge connection");
+			std::mem::drop(sock);
 			// start handling requests
 			loop {
 				let mut buf = String::new();
